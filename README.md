@@ -81,11 +81,16 @@ A comprehensive MCP (Model Context Protocol) server that connects Claude with Mi
 ### Outlook (Email & Calendar)
 | Tool | Description |
 |------|-------------|
-| `list-emails` | List recent emails from inbox |
-| `search-emails` | Search emails with filters |
-| `read-email` | Read email content |
+| `list-emails` | List emails in a folder with preview and unread/flag/attachment markers; filter by date range, unread, flag status; oldest-first; up to 500 |
+| `search-emails` | Search emails with filters (same date/flag filters; `strict` disables broadened fallbacks) |
+| `read-email` | Read email content (sanitized; does not mark as read) |
 | `send-email` | Send a new email |
+| `draft-email` | Create a new draft |
+| `draft-reply` | Create a reply / reply-all draft in the thread (never sends) |
+| `send-draft` | Send an existing draft |
 | `mark-as-read` | Mark email as read/unread |
+| `flag-email` | Flag, unflag or complete one or more emails (shows in Microsoft To Do) |
+| `delete-email` | Move to Deleted Items, or permanently delete |
 | `list-events` | List calendar events |
 | `create-event` | Create calendar event |
 | `accept-event` | Accept event invitation |
@@ -163,8 +168,14 @@ npm install
    - `User.Read`
    - `Mail.Read`, `Mail.ReadWrite`, `Mail.Send`
    - `Calendars.Read`, `Calendars.ReadWrite`
+   - `Contacts.Read`
    - `Files.Read`, `Files.ReadWrite`
 4. Click "Add permissions"
+
+The server requests exactly this list at login **and on every token refresh**
+(see `DEFAULT_GRAPH_SCOPES` in `config.js`). If your app registration grants a
+different set, set `MS_SCOPES` (space-separated) in `.env` so login and refresh
+stay in sync — a refresh that asks for fewer scopes silently downgrades the token.
 
 **For Power Automate** (optional):
 - Requires additional Azure AD configuration with Flow API scope
@@ -195,8 +206,10 @@ USE_TEST_MODE=false
 ```
 
 **Important Notes:**
-- Use `MS_CLIENT_ID` and `MS_CLIENT_SECRET` in the `.env` file
-- Set `MS_TENANT_ID` for single-tenant apps to avoid `/common` endpoint errors
+- Use `MS_CLIENT_ID` and `MS_CLIENT_SECRET` in the `.env` file. Both `index.js` and the auth server load the `.env` next to them, wherever they are started from
+- Personal accounts (outlook.com / hotmail / live): set `MS_TENANT_ID=consumers` (or `common`) and register the app for personal accounts
+- Set `MS_TENANT_ID` to your tenant GUID for single-tenant work/school apps to avoid `/common` endpoint errors
+- `OUTLOOK_MCP_DEBUG=true` logs full Graph URLs (including search terms) to stderr; off by default
 - For Claude Desktop config, you'll use `OUTLOOK_CLIENT_ID` and `OUTLOOK_CLIENT_SECRET`
 - Always use the client secret **VALUE**, never the Secret ID
 
@@ -224,10 +237,13 @@ Add to your Claude Desktop config:
 
 ### Graph API (Outlook + OneDrive)
 
-1. Start auth server: `npm run auth-server`
+1. Start auth server: `npm run auth-server` (listens on 127.0.0.1:3333 only)
 2. Use the `authenticate` tool in Claude
 3. Visit the provided URL and sign in
-4. Tokens saved to `~/.outlook-mcp-tokens.json`
+4. Tokens saved to `~/.outlook-mcp-tokens.json` and refreshed automatically
+
+On a remote/headless machine, open an SSH tunnel from the machine with the
+browser first: `ssh -L 3333:localhost:3333 <host>`, then visit the URL locally.
 
 ### Power Automate (Optional)
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const request = require('supertest');
 const { setupOAuthRoutes, createAuthConfig } = require('../../auth/oauth-server');
+const { DEFAULT_GRAPH_SCOPES } = require('../../config');
 const TokenStorage = require('../../auth/token-storage');
 
 jest.mock('../../auth/token-storage'); // Mock TokenStorage class
@@ -195,7 +196,7 @@ describe('OAuth Server Routes', () => {
         expect(config.clientId).toBe('');
         expect(config.clientSecret).toBe('');
         expect(config.redirectUri).toBe('http://localhost:3333/auth/callback');
-        expect(config.scopes).toEqual(['offline_access', 'User.Read', 'Mail.Read']);
+        expect(config.scopes).toEqual(DEFAULT_GRAPH_SCOPES);
         expect(config.tokenEndpoint).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/token');
         expect(config.authEndpoint).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
     });

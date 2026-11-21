@@ -1,6 +1,7 @@
 const express = require('express');
 const querystring = require('querystring');
 const https = require('https');
+const { getGraphScopes } = require('../config');
 const fs = require('fs');
 const crypto = require('crypto'); // Added for generating random string
 const TokenStorage = require('./token-storage'); // Assuming TokenStorage is in the same directory
@@ -59,7 +60,7 @@ function createAuthConfig(envPrefix = 'MS_') {
     clientId: process.env[`${envPrefix}CLIENT_ID`] || '',
     clientSecret: process.env[`${envPrefix}CLIENT_SECRET`] || '',
     redirectUri: process.env[`${envPrefix}REDIRECT_URI`] || 'http://localhost:3333/auth/callback',
-    scopes: (process.env[`${envPrefix}SCOPES`] || 'offline_access User.Read Mail.Read').split(' '),
+    scopes: getGraphScopes(process.env[`${envPrefix}SCOPES`]),
     tenantId,
     tokenEndpoint: process.env[`${envPrefix}TOKEN_ENDPOINT`] || `${authorityHost}/${tenantId}/oauth2/v2.0/token`,
     authEndpoint: process.env[`${envPrefix}AUTH_ENDPOINT`] || `${authorityHost}/${tenantId}/oauth2/v2.0/authorize`

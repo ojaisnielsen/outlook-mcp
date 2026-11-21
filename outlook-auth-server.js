@@ -7,8 +7,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-// Load environment variables from .env file
-require('dotenv').config();
+// Load environment variables from the .env file next to this script
+// (not the current directory, so it works when launched from anywhere)
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
+const { getGraphScopes } = require('./config');
 
 // Log to console
 console.log('Starting Outlook Authentication Server');
@@ -43,15 +45,7 @@ const AUTH_CONFIG = {
   tenantId: process.env.MS_TENANT_ID || 'common',
   authorityHost: (process.env.MS_AUTHORITY_HOST || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
   redirectUri: 'http://localhost:3333/auth/callback',
-  scopes: [
-    'offline_access',
-    'User.Read',
-    'Mail.Read',
-    'Mail.Send',
-    'Calendars.Read',
-    'Calendars.ReadWrite',
-    'Contacts.Read'
-  ],
+  scopes: getGraphScopes(),
   tokenStorePath: path.join(process.env.HOME || process.env.USERPROFILE, '.outlook-mcp-tokens.json')
 };
 
@@ -328,10 +322,14 @@ function exchangeCodeForTokens(code) {
 
 // Start server
 const PORT = 3333;
-server.listen(PORT, () => {
+// Bind to loopback only; reach it from another machine with an SSH tunnel
+// (ssh -L 3333:localhost:3333 <host>) rather than exposing it on the network.
+const HOST = process.env.AUTH_SERVER_HOST || '127.0.0.1';
+server.listen(PORT, HOST, () => {
   console.log(`Authentication server running at http://localhost:${PORT}`);
   console.log(`Waiting for authentication callback at ${AUTH_CONFIG.redirectUri}`);
   console.log(`Token will be stored at: ${AUTH_CONFIG.tokenStorePath}`);
+  console.log(`Requesting scopes: ${AUTH_CONFIG.scopes.join(' ')}`);
   
   if (!AUTH_CONFIG.clientId || !AUTH_CONFIG.clientSecret) {
     console.log('\n⚠️  WARNING: Microsoft Graph API credentials are not set.');

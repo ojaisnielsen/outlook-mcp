@@ -22,14 +22,17 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
   }
 
   try {
-    console.error(`Making real API call: ${method} ${path}`);
+    // Only the path by default; full URLs carry search terms and filters,
+    // which end up in MCP log files. Set OUTLOOK_MCP_DEBUG=true to see them.
+    const logPath = String(path).split('?')[0];
+    console.error(`Graph API: ${method} ${logPath}`);
     
     // Check if path already contains the full URL (from nextLink)
     let finalUrl;
     if (path.startsWith('http://') || path.startsWith('https://')) {
       // Path is already a full URL (from pagination nextLink)
       finalUrl = path;
-      console.error(`Using full URL from nextLink: ${finalUrl}`);
+      if (config.DEBUG) console.error(`Using full URL from nextLink: ${finalUrl}`);
     } else {
       // Build URL from path and queryParams
       // Encode path segments properly
@@ -67,11 +70,11 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
           queryString = '?' + queryString;
         }
         
-        console.error(`Query string: ${queryString}`);
+        if (config.DEBUG) console.error(`Query string: ${queryString}`);
       }
       
       finalUrl = `${config.GRAPH_API_ENDPOINT}${encodedPath}${queryString}`;
-      console.error(`Full URL: ${finalUrl}`);
+      if (config.DEBUG) console.error(`Full URL: ${finalUrl}`);
     }
     
     return new Promise((resolve, reject) => {
@@ -202,7 +205,7 @@ async function callGraphAPIDownload(accessToken, path) {
 
   return new Promise((resolve, reject) => {
     const fullUrl = `${config.GRAPH_API_ENDPOINT}${path}`;
-    console.error(`Making download request: GET ${fullUrl}`);
+    console.error(`Graph API download: GET ${path}`);
 
     const options = {
       method: 'GET',

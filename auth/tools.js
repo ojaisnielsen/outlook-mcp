@@ -55,25 +55,30 @@ async function handleAuthenticate(args) {
  */
 async function handleCheckAuthStatus() {
   console.error('[CHECK-AUTH-STATUS] Starting authentication status check');
-  
-  const tokens = tokenManager.loadTokenCache();
-  
-  console.error(`[CHECK-AUTH-STATUS] Tokens loaded: ${tokens ? 'YES' : 'NO'}`);
-  
-  if (!tokens || !tokens.access_token) {
-    console.error('[CHECK-AUTH-STATUS] No valid access token found');
+
+  if (config.USE_TEST_MODE) {
+    const tokens = tokenManager.loadTokenCache();
+    return {
+      content: [{ type: "text", text: tokens && tokens.access_token ? "Authenticated and ready" : "Not authenticated" }]
+    };
+  }
+
+  // Lazy require: ./index requires this module, so load it at call time.
+  // ensureAuthenticated refreshes an expired access token when a refresh
+  // token is available, so an hour-old token is not reported as "logged out".
+  const { ensureAuthenticated } = require('./index');
+  try {
+    await ensureAuthenticated();
+    console.error('[CHECK-AUTH-STATUS] Valid access token available');
+    return {
+      content: [{ type: "text", text: "Authenticated and ready" }]
+    };
+  } catch (error) {
+    console.error(`[CHECK-AUTH-STATUS] Not authenticated: ${error.message}`);
     return {
       content: [{ type: "text", text: "Not authenticated" }]
     };
   }
-  
-  console.error('[CHECK-AUTH-STATUS] Access token present');
-  console.error(`[CHECK-AUTH-STATUS] Token expires at: ${tokens.expires_at}`);
-  console.error(`[CHECK-AUTH-STATUS] Current time: ${Date.now()}`);
-  
-  return {
-    content: [{ type: "text", text: "Authenticated and ready" }]
-  };
 }
 
 // Tool definitions
