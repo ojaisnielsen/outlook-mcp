@@ -146,7 +146,7 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
           kqlParts.push(searchTerms[term]);
         } else {
           // Specific field searches use field:value syntax
-          kqlParts.push(`${term}:${searchTerms[term]}`);
+          kqlParts.push(kqlField(term, searchTerms[term]));
         }
         
         // Add boolean filters as KQL (can't use $filter with $search)
@@ -213,6 +213,19 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
 }
 
 /**
+ * A KQL field restriction for use inside the double-quoted $search value.
+ * Inner quotes must be backslash-escaped: `"from:"x""` is a Graph syntax
+ * error, `"from:\\"x\\""` works and allows values with spaces.
+ * @param {string} field - KQL property (subject, from, to)
+ * @param {string} value - Value to match
+ * @returns {string}
+ */
+function kqlField(field, value) {
+  const clean = String(value).replace(/["\\]/g, '');
+  return `${field}:\\"${clean}\\"`;
+}
+
+/**
  * Build search parameters from search terms and filter terms
  * @param {object} searchTerms - Search terms (query, from, to, subject)
  * @param {object} filterTerms - Filter terms (hasAttachments, unreadOnly)
@@ -234,15 +247,15 @@ function buildSearchParams(searchTerms, filterTerms, count) {
   }
   
   if (searchTerms.subject) {
-    kqlTerms.push(`subject:\"${searchTerms.subject}\"`);
+    kqlTerms.push(kqlField('subject', searchTerms.subject));
   }
 
   if (searchTerms.from) {
-    kqlTerms.push(`from:\"${searchTerms.from}\"`);
+    kqlTerms.push(kqlField('from', searchTerms.from));
   }
 
   if (searchTerms.to) {
-    kqlTerms.push(`to:\"${searchTerms.to}\"`);
+    kqlTerms.push(kqlField('to', searchTerms.to));
   }
   
   // Add $search if we have any search terms
@@ -322,3 +335,5 @@ function formatSearchResults(response) {
 }
 
 module.exports = handleSearchEmails;
+module.exports.buildSearchParams = buildSearchParams;
+module.exports.kqlField = kqlField;
