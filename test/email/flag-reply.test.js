@@ -46,9 +46,28 @@ describe('draft-reply', () => {
       ccRecipients: []
     });
     const result = await handleDraftReply({ id: 'm1', body: 'Thanks!' });
-    expect(callGraphAPI).toHaveBeenCalledWith('token', 'POST', 'me/messages/m1/createReplyAll', { comment: 'Thanks!' });
+    expect(callGraphAPI).toHaveBeenCalledWith('token', 'POST', 'me/messages/m1/createReplyAll', { comment: '' });
     expect(result.content[0].text).toContain('not sent');
     expect(result.content[0].text).toContain('Ann <ann@example.com>');
+  });
+
+  test('writes the body above the quoted thread, keeping line breaks', async () => {
+    callGraphAPI.mockResolvedValueOnce({
+      id: 'draft1',
+      subject: 'RE: Hello',
+      body: {
+        contentType: 'html',
+        content: '<html><body> <hr tabindex="-1"><div id="divRplyFwdMsg"><b>From:</b> Ann</div><div>Hi</div></body></html>'
+      }
+    }).mockResolvedValueOnce({});
+    await handleDraftReply({ id: 'm1', body: 'Line 1\nLine 2 <ok>' });
+    const [, method, path, patch] = callGraphAPI.mock.calls[1];
+    expect(method).toBe('PATCH');
+    expect(path).toBe('me/messages/draft1');
+    expect(patch.body.contentType).toBe('html');
+    expect(patch.body.content).toBe(
+      '<html><body>Line 1<br>Line 2 &lt;ok&gt;<br><hr tabindex="-1"><div id="divRplyFwdMsg"><b>From:</b> Ann</div><div>Hi</div></body></html>'
+    );
   });
 
   test('replyAll: false creates a plain reply', async () => {
