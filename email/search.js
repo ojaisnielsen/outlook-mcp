@@ -5,23 +5,41 @@ const config = require('../config');
 const { callGraphAPI, callGraphAPIPaginated } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { resolveFolderPath } = require('./folder-utils');
+const {
+  clampCount,
+  buildMessageFilter,
+  matchesMessageFilter,
+  formatEmailList,
+  UNTRUSTED_NOTE
+} = require('./format');
 
 /**
  * Search emails handler
  * @param {object} args - Tool arguments
  * @returns {object} - MCP response
  */
-async function handleSearchEmails(args) {
+async function handleSearchEmails(args = {}) {
   const folder = args.folder || "inbox";
-  const requestedCount = args.count || 10;
+  const requestedCount = clampCount(args.count, 10);
+  const strict = args.strict === true;
   const query = args.query || '';
   const from = args.from || '';
   const to = args.to || '';
   const subject = args.subject || '';
   const hasAttachments = args.hasAttachments;
   const unreadOnly = args.unreadOnly;
-  
+  const filterTerms = {
+    hasAttachments,
+    unreadOnly,
+    receivedAfter: args.receivedAfter,
+    receivedBefore: args.receivedBefore,
+    flagStatus: args.flagStatus
+  };
+
   try {
+    // Validate filters (dates, flagStatus) before touching the API
+    buildMessageFilter(filterTerms);
+
     // Get access token
     const accessToken = await ensureAuthenticated();
     
@@ -34,8 +52,9 @@ async function handleSearchEmails(args) {
       endpoint, 
       accessToken, 
       { query, from, to, subject },
-      { hasAttachments, unreadOnly },
-      requestedCount
+      filterTerms,
+      requestedCount,
+      { strict }
     );
     
     return formatSearchResults(response);
@@ -69,23 +88,37 @@ async function handleSearchEmails(args) {
  * @param {number} maxCount - Maximum number of results to retrieve
  * @returns {Promise<object>} - Search results
  */
-async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms, maxCount) {
+async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms, maxCount, options = {}) {
   // Track search strategies attempted
   const searchAttempts = [];
+  const finish = (response, strategy) => {
+    response.value = (response.value || []).filter(email => matchesMessageFilter(email, filterTerms));
+    response._searchInfo = {
+      attemptsCount: searchAttempts.length,
+      strategies: searchAttempts,
+      strategy,
+      // true when the results came from a broader search than asked for
+      fallback: strategy !== 'combined-search',
+      originalTerms: searchTerms,
+      filterTerms
+    };
+    return response;
+  };
   
   // 1. Try combined search (most specific)
   try {
     const params = buildSearchParams(searchTerms, filterTerms, Math.min(50, maxCount));
-    console.error("Attempting combined search with params:", params);
+    if (config.DEBUG) console.error("Attempting combined search with params:", params);
     searchAttempts.push("combined-search");
     
     const response = await callGraphAPIPaginated(accessToken, 'GET', endpoint, params, maxCount);
-    if (response.value && response.value.length > 0) {
-      console.error(`Combined search successful: found ${response.value.length} results`);
-      return response;
+    if ((response.value && response.value.length > 0) || options.strict) {
+      console.error(`Combined search found ${response.value?.length || 0} results`);
+      return finish(response, 'combined-search');
     }
   } catch (error) {
     console.error(`Combined search failed: ${error.message}`);
+    if (options.strict) throw error;
   }
   
   // 2. Try each search term individually, starting with most specific
@@ -94,7 +127,7 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
   for (const term of searchPriority) {
     if (searchTerms[term]) {
       try {
-        console.error(`Attempting search with only ${term}: "${searchTerms[term]}"`);
+        console.error(`Attempting search with only ${term}`);
         searchAttempts.push(`single-term-${term}`);
         
         // For single term search, only use $search with that term
@@ -113,7 +146,7 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
           kqlParts.push(searchTerms[term]);
         } else {
           // Specific field searches use field:value syntax
-          kqlParts.push(`${term}:${searchTerms[term]}`);
+          kqlParts.push(kqlField(term, searchTerms[term]));
         }
         
         // Add boolean filters as KQL (can't use $filter with $search)
@@ -124,7 +157,7 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
         const response = await callGraphAPIPaginated(accessToken, 'GET', endpoint, simplifiedParams, maxCount);
         if (response.value && response.value.length > 0) {
           console.error(`Search with ${term} successful: found ${response.value.length} results`);
-          return response;
+          return finish(response, `single-term-${term}`);
         }
       } catch (error) {
         console.error(`Search with ${term} failed: ${error.message}`);
@@ -132,8 +165,8 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
     }
   }
   
-  // 3. Try with only boolean filters
-  if (filterTerms.hasAttachments === true || filterTerms.unreadOnly === true) {
+  // 3. Try with only the filters (dates, unread, attachments, flag)
+  if (buildMessageFilter(filterTerms)) {
     try {
       console.error("Attempting search with only boolean filters");
       searchAttempts.push("boolean-filters-only");
@@ -144,12 +177,11 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
         $orderby: 'receivedDateTime desc'
       };
       
-      // Add the boolean filters
-      addBooleanFilters(filterOnlyParams, filterTerms);
-      
+      filterOnlyParams.$filter = buildMessageFilter(filterTerms);
+
       const response = await callGraphAPIPaginated(accessToken, 'GET', endpoint, filterOnlyParams, maxCount);
-      console.error(`Boolean filter search found ${response.value?.length || 0} results`);
-      return response;
+      console.error(`Filter-only search found ${response.value?.length || 0} results`);
+      return finish(response, 'boolean-filters-only');
     } catch (error) {
       console.error(`Boolean filter search failed: ${error.message}`);
     }
@@ -167,16 +199,30 @@ async function progressiveSearch(endpoint, accessToken, searchTerms, filterTerms
   
   const response = await callGraphAPIPaginated(accessToken, 'GET', endpoint, basicParams, maxCount);
   console.error(`Fallback to recent emails found ${response.value?.length || 0} results`);
-  
-  // Add a note to the response about the search attempts
+
+  // Deliberately not filtered: this is "recent mail", flagged as such below
   response._searchInfo = {
     attemptsCount: searchAttempts.length,
     strategies: searchAttempts,
+    strategy: 'recent-emails',
+    fallback: true,
     originalTerms: searchTerms,
-    filterTerms: filterTerms
+    filterTerms
   };
-  
   return response;
+}
+
+/**
+ * A KQL field restriction for use inside the double-quoted $search value.
+ * Inner quotes must be backslash-escaped: `"from:"x""` is a Graph syntax
+ * error, `"from:\\"x\\""` works and allows values with spaces.
+ * @param {string} field - KQL property (subject, from, to)
+ * @param {string} value - Value to match
+ * @returns {string}
+ */
+function kqlField(field, value) {
+  const clean = String(value).replace(/["\\]/g, '');
+  return `${field}:\\"${clean}\\"`;
 }
 
 /**
@@ -201,15 +247,15 @@ function buildSearchParams(searchTerms, filterTerms, count) {
   }
   
   if (searchTerms.subject) {
-    kqlTerms.push(`subject:\"${searchTerms.subject}\"`);
+    kqlTerms.push(kqlField('subject', searchTerms.subject));
   }
 
   if (searchTerms.from) {
-    kqlTerms.push(`from:\"${searchTerms.from}\"`);
+    kqlTerms.push(kqlField('from', searchTerms.from));
   }
 
   if (searchTerms.to) {
-    kqlTerms.push(`to:\"${searchTerms.to}\"`);
+    kqlTerms.push(kqlField('to', searchTerms.to));
   }
   
   // Add $search if we have any search terms
@@ -221,33 +267,11 @@ function buildSearchParams(searchTerms, filterTerms, count) {
   } else {
     // No search terms — safe to use $orderby and $filter
     params.$orderby = 'receivedDateTime desc';
-    addBooleanFilters(params, filterTerms);
+    const filter = buildMessageFilter(filterTerms);
+    if (filter) params.$filter = filter;
   }
   
   return params;
-}
-
-/**
- * Add boolean filters to query parameters as OData $filter
- * Only use when $search is NOT present (they conflict in Graph API)
- * @param {object} params - Query parameters
- * @param {object} filterTerms - Filter terms (hasAttachments, unreadOnly)
- */
-function addBooleanFilters(params, filterTerms) {
-  const filterConditions = [];
-  
-  if (filterTerms.hasAttachments === true) {
-    filterConditions.push('hasAttachments eq true');
-  }
-  
-  if (filterTerms.unreadOnly === true) {
-    filterConditions.push('isRead eq false');
-  }
-  
-  // Add $filter parameter if we have any filter conditions
-  if (filterConditions.length > 0) {
-    params.$filter = filterConditions.join(' and ');
-  }
 }
 
 /**
@@ -264,6 +288,14 @@ function addBooleanFiltersAsKQL(kqlTerms, filterTerms) {
   if (filterTerms.unreadOnly === true) {
     kqlTerms.push('isRead:false');
   }
+
+  // Day granularity in KQL; exact times and flag status are re-checked client-side
+  if (filterTerms.receivedAfter) {
+    kqlTerms.push(`received>=${new Date(filterTerms.receivedAfter).toISOString().slice(0, 10)}`);
+  }
+  if (filterTerms.receivedBefore) {
+    kqlTerms.push(`received<=${new Date(filterTerms.receivedBefore).toISOString().slice(0, 10)}`);
+  }
 }
 
 /**
@@ -272,36 +304,36 @@ function addBooleanFiltersAsKQL(kqlTerms, filterTerms) {
  * @returns {object} - MCP response object
  */
 function formatSearchResults(response) {
+  const info = response._searchInfo;
+
   if (!response.value || response.value.length === 0) {
     return {
-      content: [{ 
-        type: "text", 
+      content: [{
+        type: "text",
         text: `No emails found matching your search criteria.`
       }]
     };
   }
-  
-  // Format results
-  const emailList = response.value.map((email, index) => {
-    const sender = email.from?.emailAddress || { name: 'Unknown', address: 'unknown' };
-    const date = new Date(email.receivedDateTime).toLocaleString();
-    const readStatus = email.isRead ? '' : '[UNREAD] ';
-    
-    return `${index + 1}. ${readStatus}${date} - From: ${sender.name} (${sender.address})\nSubject: ${email.subject}\nID: ${email.id}\n`;
-  }).join("\n");
-  
-  // Add search strategy info if available
-  let additionalInfo = '';
-  if (response._searchInfo) {
-    additionalInfo = `\n(Search used ${response._searchInfo.strategies[response._searchInfo.strategies.length - 1]} strategy)`;
+
+  const emailList = formatEmailList(response.value);
+
+  let header = `Found ${response.value.length} emails matching your search criteria:`;
+  if (info && info.fallback) {
+    header = `WARNING: no emails matched all of your search criteria. ` +
+      `Showing ${response.value.length} results from a broader "${info.strategy}" search instead; ` +
+      `these may NOT match what you asked for. Pass strict: true to get only exact matches.`;
+  } else if (info && info.strategy) {
+    header += `\n(Search used ${info.strategy} strategy)`;
   }
-  
+
   return {
-    content: [{ 
-      type: "text", 
-      text: `Found ${response.value.length} emails matching your search criteria:${additionalInfo}\n\n${emailList}`
+    content: [{
+      type: "text",
+      text: `${header}\n${UNTRUSTED_NOTE}\n\n${emailList}`
     }]
   };
 }
 
 module.exports = handleSearchEmails;
+module.exports.buildSearchParams = buildSearchParams;
+module.exports.kqlField = kqlField;

@@ -6,6 +6,11 @@
  * Microsoft 365 services (Outlook, OneDrive, Power Automate)
  * through the Microsoft Graph API and Flow API.
  */
+const path = require('path');
+// Load MS_CLIENT_ID / MS_CLIENT_SECRET etc. from the .env next to this file.
+// quiet: dotenv must never write to stdout, which carries the MCP protocol.
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
+
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const config = require('./config');
@@ -131,10 +136,15 @@ server.fallbackRequestHandler = async (request) => {
   }
 };
 
-// Make the script executable
-process.on('SIGTERM', () => {
-  console.error('SIGTERM received but staying alive');
-});
+// Shut down cleanly when the client stops us or closes stdin, so no
+// orphaned server processes pile up.
+function shutdown(reason) {
+  console.error(`${reason} received, shutting down`);
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.stdin.on('end', () => shutdown('stdin end'));
 
 // Start the server
 const transport = new StdioServerTransport();

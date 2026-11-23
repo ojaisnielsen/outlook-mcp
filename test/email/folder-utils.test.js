@@ -99,7 +99,7 @@ describe('resolveFolderPath', () => {
       expect(callGraphAPI).toHaveBeenCalledTimes(2);
     });
 
-    test('should fall back to inbox when custom folder is not found', async () => {
+    test('should throw (not fall back to inbox) when custom folder is not found', async () => {
       const nonExistentFolder = 'NonExistentFolder';
 
       // First call returns empty (exact match fails)
@@ -113,20 +113,18 @@ describe('resolveFolderPath', () => {
         ]
       });
 
-      const result = await resolveFolderPath(mockAccessToken, nonExistentFolder);
-
-      expect(result).toBe(WELL_KNOWN_FOLDERS['inbox']);
+      await expect(resolveFolderPath(mockAccessToken, nonExistentFolder))
+        .rejects.toThrow('Folder "NonExistentFolder" not found');
       expect(callGraphAPI).toHaveBeenCalledTimes(2);
     });
 
-    test('should fall back to inbox when API call fails', async () => {
+    test('should throw (not fall back to inbox) when API call fails', async () => {
       const customFolderName = 'CustomFolder';
 
       callGraphAPI.mockRejectedValueOnce(new Error('API Error'));
 
-      const result = await resolveFolderPath(mockAccessToken, customFolderName);
-
-      expect(result).toBe(WELL_KNOWN_FOLDERS['inbox']);
+      await expect(resolveFolderPath(mockAccessToken, customFolderName))
+        .rejects.toThrow('API Error');
       expect(callGraphAPI).toHaveBeenCalledTimes(1);
     });
   });
@@ -214,3 +212,43 @@ describe('getFolderIdByName', () => {
     expect(callGraphAPI).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('getFolderIdByName - well-known names, escaping, subfolders', () => {
+  const mockAccessToken = 'dummy_access_token';
+  beforeEach(() => {
+    callGraphAPI.mockReset();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    console.error.mockRestore();
+  });
+
+  test('maps well-known names to Graph folder IDs without an API call', async () => {
+    expect(await getFolderIdByName(mockAccessToken, 'Junk')).toBe('junkemail');
+    expect(await getFolderIdByName(mockAccessToken, 'archive')).toBe('archive');
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('escapes single quotes in the OData filter', async () => {
+    callGraphAPI.mockResolvedValueOnce({ value: [{ id: 'f1', displayName: "Bob's stuff" }] });
+    await getFolderIdByName(mockAccessToken, "Bob's stuff");
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken, 'GET', 'me/mailFolders', null,
+      { $filter: "displayName eq 'Bob''s stuff'" }
+    );
+  });
+
+  test('finds a folder nested under a parent', async () => {
+    callGraphAPI
+      .mockResolvedValueOnce({ value: [] })
+      .mockResolvedValueOnce({ value: [{ id: 'p1', displayName: 'Parent', childFolderCount: 1 }] })
+      .mockResolvedValueOnce({ value: [{ id: 'c1', displayName: 'Child', childFolderCount: 0 }] });
+    expect(await getFolderIdByName(mockAccessToken, 'child')).toBe('c1');
+    expect(callGraphAPI).toHaveBeenLastCalledWith(
+      mockAccessToken, 'GET', 'me/mailFolders/p1/childFolders', null,
+      { $top: 100, $select: 'id,displayName,childFolderCount' }
+    );
+  });
+});
+

@@ -7,7 +7,35 @@ const os = require('os');
 // Ensure we have a home directory path even if process.env.HOME is undefined
 const homeDir = process.env.HOME || process.env.USERPROFILE || os.homedir() || '/tmp';
 
+// Graph scopes requested at login AND on every token refresh. They must match:
+// a refresh that asks for fewer scopes gets back a token with fewer permissions
+// (e.g. Mail.Read only), which silently breaks moving/flagging mail.
+// Override with MS_SCOPES (space-separated) if your app registration differs.
+const DEFAULT_GRAPH_SCOPES = [
+  'offline_access',
+  'User.Read',
+  'Mail.Read',
+  'Mail.ReadWrite',
+  'Mail.Send',
+  'Calendars.Read',
+  'Calendars.ReadWrite',
+  'Contacts.Read',
+  'Files.Read',
+  'Files.ReadWrite'
+];
+
+function getGraphScopes(envValue = process.env.MS_SCOPES) {
+  const fromEnv = (envValue || '').split(/\s+/).filter(Boolean);
+  return fromEnv.length > 0 ? fromEnv : [...DEFAULT_GRAPH_SCOPES];
+}
+
 module.exports = {
+  DEFAULT_GRAPH_SCOPES,
+  getGraphScopes,
+
+  // Verbose request logging (full URLs incl. search terms) - off by default
+  DEBUG: process.env.OUTLOOK_MCP_DEBUG === 'true',
+
   // Server information
   SERVER_NAME: "m365-assistant",
   SERVER_VERSION: "2.0.0",
@@ -17,10 +45,10 @@ module.exports = {
   
   // Authentication configuration
   AUTH_CONFIG: {
-    clientId: process.env.OUTLOOK_CLIENT_ID || '',
-    clientSecret: process.env.OUTLOOK_CLIENT_SECRET || '',
+    clientId: process.env.OUTLOOK_CLIENT_ID || process.env.MS_CLIENT_ID || '',
+    clientSecret: process.env.OUTLOOK_CLIENT_SECRET || process.env.MS_CLIENT_SECRET || '',
     redirectUri: 'http://localhost:3333/auth/callback',
-    scopes: ['Mail.Read', 'Mail.ReadWrite', 'Mail.Send', 'User.Read', 'Calendars.Read', 'Calendars.ReadWrite', 'Files.Read', 'Files.ReadWrite'],
+    scopes: getGraphScopes(),
     tokenStorePath: path.join(homeDir, '.outlook-mcp-tokens.json'),
     authServerUrl: 'http://localhost:3333'
   },
@@ -28,12 +56,9 @@ module.exports = {
   // Microsoft Graph API
   GRAPH_API_ENDPOINT: 'https://graph.microsoft.com/v1.0/',
   
-  // Calendar constants
-  CALENDAR_SELECT_FIELDS: 'id,subject,start,end,location,bodyPreview,isAllDay,recurrence,attendees',
-
   // Email constants
-  EMAIL_SELECT_FIELDS: 'id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,importance,isRead',
-  EMAIL_DETAIL_FIELDS: 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,hasAttachments,importance,isRead,internetMessageHeaders',
+  EMAIL_SELECT_FIELDS: 'id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,importance,isRead,flag,categories,conversationId',
+  EMAIL_DETAIL_FIELDS: 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,hasAttachments,importance,isRead,flag,categories,conversationId,internetMessageHeaders',
   
   // Calendar constants
   CALENDAR_SELECT_FIELDS: 'id,subject,bodyPreview,start,end,location,organizer,attendees,isAllDay,isCancelled',
@@ -41,6 +66,8 @@ module.exports = {
   // Pagination
   DEFAULT_PAGE_SIZE: 25,
   MAX_RESULT_COUNT: 50,
+  // Upper bound for list/search when paging through a large folder (e.g. a backlog)
+  MAX_LIST_COUNT: 500,
 
   // Timezone
   DEFAULT_TIMEZONE: "Central European Standard Time",

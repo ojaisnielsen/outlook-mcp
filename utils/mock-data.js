@@ -121,14 +121,19 @@ function simulateGraphAPIResponse(method, path, data, queryParams) {
       }
     } else if (path.includes('mailFolders')) {
       // Simulate a mail folders response
-      return {
-        value: [
-          { id: "inbox", displayName: "Inbox" },
-          { id: "drafts", displayName: "Drafts" },
-          { id: "sentItems", displayName: "Sent Items" },
-          { id: "deleteditems", displayName: "Deleted Items" }
-        ]
-      };
+      const folders = [
+        { id: "inbox", displayName: "Inbox" },
+        { id: "drafts", displayName: "Drafts" },
+        { id: "sentItems", displayName: "Sent Items" },
+        { id: "deleteditems", displayName: "Deleted Items" }
+      ];
+      // Honour "displayName eq '<name>'" like the real API
+      const nameFilter = /displayName eq '((?:[^']|'')*)'/.exec((queryParams && queryParams.$filter) || '');
+      if (nameFilter) {
+        const name = nameFilter[1].replace(/''/g, "'");
+        return { value: folders.filter(f => f.displayName === name) };
+      }
+      return { value: folders };
     }
   } else if (method === 'POST' && path.includes('sendMail')) {
     // Simulate a successful email send

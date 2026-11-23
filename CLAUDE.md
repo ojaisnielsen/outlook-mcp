@@ -48,8 +48,9 @@ Each module exports tools and handlers:
 1. Azure app registration required with permissions:
    - `Mail.Read`, `Mail.ReadWrite`, `Mail.Send`
    - `Calendars.Read`, `Calendars.ReadWrite`
-   - `Files.Read`, `Files.ReadWrite`
+   - `Contacts.Read`, `Files.Read`, `Files.ReadWrite`
    - `User.Read`, `offline_access`
+   - The same list is requested at login and on refresh (`DEFAULT_GRAPH_SCOPES` in `config.js`, override with `MS_SCOPES`); keep them in one place
 2. Start auth server: `npm run auth-server`
 3. Use authenticate tool to get OAuth URL
 4. Complete browser authentication
@@ -68,11 +69,14 @@ Each module exports tools and handlers:
 - **For Claude Desktop config**: Use `OUTLOOK_CLIENT_ID` and `OUTLOOK_CLIENT_SECRET`
 - **Important**: Always use the client secret VALUE from Azure, not the Secret ID
 
+- `OUTLOOK_MCP_DEBUG=true` - log full Graph URLs (search terms included) to stderr
+- Never write to stdout from code loaded by `index.js` (use `console.error`): stdout carries the MCP protocol
+
 ### Config Constants
 - `GRAPH_API_ENDPOINT`: `https://graph.microsoft.com/v1.0/`
 - `FLOW_API_ENDPOINT`: `https://api.flow.microsoft.com`
 - `ONEDRIVE_UPLOAD_THRESHOLD`: 4MB (files larger need chunked upload)
-- Default page size: 25, max results: 50
+- Default page size: 25, max results: 50 (list/search page up to `MAX_LIST_COUNT` = 500)
 
 ### Common Setup Issues
 1. **Missing dependencies**: Always run `npm install` first

@@ -8,22 +8,58 @@ const handleSendEmail = require('./send');
 const handleDraftEmail = require('./draft');
 const handleMarkAsRead = require('./mark-as-read');
 const handleDeleteEmail = require('./delete');
+const handleFlagEmail = require('./flag');
+const { handleDraftReply, handleSendDraft } = require('./reply');
+
+// Filter parameters shared by list-emails and search-emails
+const FILTER_PROPERTIES = {
+  receivedAfter: {
+    type: "string",
+    description: "Only emails received at or after this ISO 8601 date/time (e.g. '2026-11-20T06:00:00Z')"
+  },
+  receivedBefore: {
+    type: "string",
+    description: "Only emails received before this ISO 8601 date/time"
+  },
+  flagStatus: {
+    type: "string",
+    enum: ["flagged", "notFlagged", "complete"],
+    description: "Only emails with this follow-up flag status"
+  }
+};
 
 // Email tool definitions
 const emailTools = [
   {
     name: "list-emails",
-    description: "Lists recent emails from your inbox",
+    description: "Lists emails in a folder (newest first by default) with sender, ISO date, unread/flag/attachment markers, a short preview and the ID. Does not change read state.",
     inputSchema: {
       type: "object",
       properties: {
         folder: {
           type: "string",
-          description: "Email folder to list (e.g., 'inbox', 'sent', 'drafts', default: 'inbox')"
+          description: "Email folder to list (e.g., 'inbox', 'sent', 'drafts', or a folder name; default: 'inbox'). An unknown name is an error."
         },
         count: {
           type: "number",
-          description: "Number of emails to retrieve (default: 10, max: 50)"
+          description: "Number of emails to retrieve (default: 10, max: 500; pages through the folder)"
+        },
+        unreadOnly: {
+          type: "boolean",
+          description: "Only unread emails"
+        },
+        hasAttachments: {
+          type: "boolean",
+          description: "Only emails with attachments"
+        },
+        ...FILTER_PROPERTIES,
+        oldestFirst: {
+          type: "boolean",
+          description: "Sort oldest first instead of newest first"
+        },
+        includePreview: {
+          type: "boolean",
+          description: "Include a ~200-character body preview per email (default: true)"
         }
       },
       required: []
@@ -64,9 +100,14 @@ const emailTools = [
           type: "boolean",
           description: "Filter to only unread emails"
         },
+        ...FILTER_PROPERTIES,
         count: {
           type: "number",
-          description: "Number of results to return (default: 10, max: 50)"
+          description: "Number of results to return (default: 10, max: 500)"
+        },
+        strict: {
+          type: "boolean",
+          description: "Only return emails matching all criteria. Without it, if nothing matches, broader searches are tried and the result is marked with a WARNING."
         }
       },
       required: []
@@ -209,6 +250,64 @@ const emailTools = [
       required: ["id"]
     },
     handler: handleDeleteEmail
+  },
+  {
+    name: "flag-email",
+    description: "Sets the follow-up flag on one or more emails: flag, unflag (notFlagged) or mark complete. Flagged emails also appear in Microsoft To Do. Does not change read state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids: {
+          type: "string",
+          description: "Email ID, or a comma-separated list of IDs"
+        },
+        status: {
+          type: "string",
+          enum: ["flagged", "notFlagged", "complete"],
+          description: "Flag status to set (default: flagged)"
+        }
+      },
+      required: ["ids"]
+    },
+    handler: handleFlagEmail
+  },
+  {
+    name: "draft-reply",
+    description: "Creates a reply or reply-all draft in the original thread (with the quoted conversation) and returns its recipients for checking. Never sends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "ID of the email to reply to (normally the latest message in the thread)"
+        },
+        body: {
+          type: "string",
+          description: "Plain-text reply, placed above the quoted thread"
+        },
+        replyAll: {
+          type: "boolean",
+          description: "Reply to all recipients (default: true)"
+        }
+      },
+      required: ["id"]
+    },
+    handler: handleDraftReply
+  },
+  {
+    name: "send-draft",
+    description: "Sends an existing draft (e.g. one created by draft-reply or draft-email). Refuses anything that is not a draft.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "ID of the draft to send"
+        }
+      },
+      required: ["id"]
+    },
+    handler: handleSendDraft
   }
 ];
 
@@ -220,5 +319,8 @@ module.exports = {
   handleSendEmail,
   handleDraftEmail,
   handleMarkAsRead,
-  handleDeleteEmail
+  handleDeleteEmail,
+  handleFlagEmail,
+  handleDraftReply,
+  handleSendDraft
 };

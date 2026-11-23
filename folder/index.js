@@ -57,7 +57,7 @@ const folderTools = [
         },
         targetFolder: {
           type: "string",
-          description: "Name of the folder to move emails to"
+          description: "Name of the folder to move emails to: a folder's display name (subfolders are found too) or a well-known name (inbox, archive, junk, deleted, drafts, sent)"
         },
         sourceFolder: {
           type: "string",
