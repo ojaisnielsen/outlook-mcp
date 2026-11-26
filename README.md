@@ -88,6 +88,8 @@ A comprehensive MCP (Model Context Protocol) server that connects Claude with Mi
 | `draft-email` | Create a new draft |
 | `draft-reply` | Create a reply / reply-all draft in the thread (never sends) |
 | `send-draft` | Send an existing draft |
+| `update-draft` | Edit a draft's subject, body, recipients or importance; on replies, keeps the quoted thread by default (never sends) |
+| `add-attachment` | Attach a local file or a OneDrive file to a draft, up to 150 MB (never sends) |
 | `mark-as-read` | Mark email as read/unread |
 | `flag-email` | Flag, unflag or complete one or more emails (shows in Microsoft To Do) |
 | `delete-email` | Move to Deleted Items, or permanently delete |
@@ -210,6 +212,7 @@ USE_TEST_MODE=false
 - Personal accounts (outlook.com / hotmail / live): set `MS_TENANT_ID=consumers` (or `common`) and register the app for personal accounts
 - Set `MS_TENANT_ID` to your tenant GUID for single-tenant work/school apps to avoid `/common` endpoint errors
 - `OUTLOOK_MCP_DEBUG=true` logs full Graph URLs (including search terms) to stderr; off by default
+- `OUTLOOK_MCP_ATTACHMENT_DIRS` limits the local folders `add-attachment` may read from (separated by `:`; `;` on Windows). Hidden files and hidden folders are always refused
 - For Claude Desktop config, you'll use `OUTLOOK_CLIENT_ID` and `OUTLOOK_CLIENT_SECRET`
 - Always use the client secret **VALUE**, never the Secret ID
 

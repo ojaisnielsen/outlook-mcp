@@ -16,6 +16,9 @@ function simulateGraphAPIResponse(method, path, data, queryParams) {
   if (method === 'GET') {
     if (path.includes('messages') && !path.includes('sendMail')) {
       // Simulate a successful email list/search response
+      if (path.includes('/messages/') && path.endsWith('/attachments')) {
+        return { value: [{ name: "simulated-attachment.pdf", size: 1024 }] };
+      }
       if (path.includes('/messages/')) {
         // Single email response
         return {
@@ -42,6 +45,7 @@ function simulateGraphAPIResponse(method, path, data, queryParams) {
             content: "This is the full content of the simulated email. Since we can't connect to the real Microsoft Graph API, we're returning this placeholder content instead."
           },
           hasAttachments: false,
+          isDraft: true,
           importance: "normal",
           isRead: false,
           internetMessageHeaders: []

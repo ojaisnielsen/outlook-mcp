@@ -5,6 +5,7 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
+const { buildBody } = require('./draft-utils');
 
 function formatRecipients(list) {
   if (!list || list.length === 0) return 'None';
@@ -18,7 +19,7 @@ function authError(error) {
 /**
  * @param {object} args
  * @param {string} args.id - ID of the message to reply to
- * @param {string} [args.body] - Plain-text reply, placed above the quoted thread
+ * @param {string} [args.body] - Reply text (plain, line breaks kept, or HTML), placed above the quoted thread
  * @param {boolean} [args.replyAll=true] - Reply to all recipients
  */
 async function handleDraftReply(args = {}) {
@@ -34,8 +35,15 @@ async function handleDraftReply(args = {}) {
       accessToken,
       'POST',
       `me/messages/${encodeURIComponent(args.id)}/${action}`,
-      { comment: args.body || '' }
+      { comment: '' }
     );
+
+    // Graph's `comment` collapses line breaks, so the text is written into
+    // the HTML body above the quoted thread instead.
+    if (args.body) {
+      const { body } = buildBody(draft.body, args.body, 'auto');
+      await callGraphAPI(accessToken, 'PATCH', `me/messages/${encodeURIComponent(draft.id)}`, { body });
+    }
 
     return {
       content: [{

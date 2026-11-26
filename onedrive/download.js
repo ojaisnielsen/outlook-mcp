@@ -34,12 +34,9 @@ async function handleDownload(args) {
       endpoint = `me/drive/root:/${normalizedPath}`;
     }
 
-    // Get item metadata with download URL
-    const queryParams = {
-      $select: 'id,name,size,@microsoft.graph.downloadUrl'
-    };
-
-    const response = await callGraphAPI(accessToken, 'GET', endpoint, null, queryParams);
+    // Get item metadata with download URL. No $select: personal OneDrive
+    // omits @microsoft.graph.downloadUrl when it is requested through $select.
+    const response = await callGraphAPI(accessToken, 'GET', endpoint);
 
     if (!response) {
       return {

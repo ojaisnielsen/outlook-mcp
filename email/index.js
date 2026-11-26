@@ -10,6 +10,8 @@ const handleMarkAsRead = require('./mark-as-read');
 const handleDeleteEmail = require('./delete');
 const handleFlagEmail = require('./flag');
 const { handleDraftReply, handleSendDraft } = require('./reply');
+const handleUpdateDraft = require('./update-draft');
+const handleAddAttachment = require('./attachments');
 
 // Filter parameters shared by list-emails and search-emails
 const FILTER_PROPERTIES = {
@@ -283,7 +285,7 @@ const emailTools = [
         },
         body: {
           type: "string",
-          description: "Plain-text reply, placed above the quoted thread"
+          description: "Reply text, placed above the quoted thread. Plain text (line breaks are kept) or HTML"
         },
         replyAll: {
           type: "boolean",
@@ -308,6 +310,94 @@ const emailTools = [
       required: ["id"]
     },
     handler: handleSendDraft
+  },
+  {
+    name: "update-draft",
+    description: "Edits an existing draft (from draft-email, draft-reply or Outlook): subject, body, recipients, importance. Only the fields given change. Refuses anything that is not a draft. Never sends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "ID of the draft to edit"
+        },
+        subject: {
+          type: "string",
+          description: "New subject"
+        },
+        body: {
+          type: "string",
+          description: "New body text: plain text (line breaks are kept) or HTML. How it is applied depends on bodyMode"
+        },
+        bodyMode: {
+          type: "string",
+          enum: ["auto", "replace", "prepend"],
+          description: "auto (default): on a reply/forward draft, replace only the text above the quoted thread and keep the thread; otherwise replace the body. replace: replace the whole body, quoted thread included. prepend: insert the text above the existing body"
+        },
+        to: {
+          type: "string",
+          description: "Comma-separated addresses that replace the To list (empty string clears it)"
+        },
+        cc: {
+          type: "string",
+          description: "Comma-separated addresses that replace the Cc list (empty string clears it)"
+        },
+        bcc: {
+          type: "string",
+          description: "Comma-separated addresses that replace the Bcc list (empty string clears it)"
+        },
+        addTo: {
+          type: "string",
+          description: "Comma-separated addresses to add to the To list"
+        },
+        addCc: {
+          type: "string",
+          description: "Comma-separated addresses to add to the Cc list"
+        },
+        addBcc: {
+          type: "string",
+          description: "Comma-separated addresses to add to the Bcc list"
+        },
+        importance: {
+          type: "string",
+          enum: ["low", "normal", "high"],
+          description: "Email importance"
+        }
+      },
+      required: ["id"]
+    },
+    handler: handleUpdateDraft
+  },
+  {
+    name: "add-attachment",
+    description: "Attaches a file to an existing draft, from a local path on the machine running this server or from OneDrive (copied in as a regular attachment). Up to 150 MB. Refuses anything that is not a draft. Never sends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "ID of the draft"
+        },
+        filePath: {
+          type: "string",
+          description: "Absolute path of a local file on the server's machine. Hidden files and directories are refused; OUTLOOK_MCP_ATTACHMENT_DIRS can restrict where files may come from"
+        },
+        oneDrivePath: {
+          type: "string",
+          description: "OneDrive path of the file (e.g. '/Documents/report.pdf')"
+        },
+        oneDriveItemId: {
+          type: "string",
+          description: "OneDrive item ID of the file"
+        },
+        name: {
+          type: "string",
+          description: "Attachment name shown to recipients (default: the file name)"
+        }
+      },
+      required: ["id"]
+    },
+    handler: handleAddAttachment
   }
 ];
 
@@ -322,5 +412,7 @@ module.exports = {
   handleDeleteEmail,
   handleFlagEmail,
   handleDraftReply,
-  handleSendDraft
+  handleSendDraft,
+  handleUpdateDraft,
+  handleAddAttachment
 };

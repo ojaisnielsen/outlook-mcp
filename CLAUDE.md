@@ -28,7 +28,7 @@ This is a modular MCP (Model Context Protocol) server that provides Claude with 
 Each module exports tools and handlers:
 - `auth/` - OAuth 2.0 authentication with token management (Graph + Flow)
 - `calendar/` - Calendar operations (list, create, accept, decline, delete events)
-- `email/` - Email management (list, search, read, send, mark as read)
+- `email/` - Email management (list, search, read, send, mark as read, drafts: create, reply, update, attach, send)
 - `folder/` - Folder operations (list, create, move)
 - `rules/` - Email rules management
 - `onedrive/` - OneDrive operations (list, search, download, upload, share, folder ops)
@@ -70,6 +70,7 @@ Each module exports tools and handlers:
 - **Important**: Always use the client secret VALUE from Azure, not the Secret ID
 
 - `OUTLOOK_MCP_DEBUG=true` - log full Graph URLs (search terms included) to stderr
+- `OUTLOOK_MCP_ATTACHMENT_DIRS` - optional `:`-separated folders `add-attachment` may read local files from (hidden files/folders always refused)
 - Never write to stdout from code loaded by `index.js` (use `console.error`): stdout carries the MCP protocol
 
 ### Config Constants
